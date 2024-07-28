@@ -4,10 +4,24 @@ import { Stack } from 'expo-router';
 import { useState } from 'react';
 import { Text, View, TextInput } from 'react-native';
 import {supabase} from "~/utils/supabase";
+import {Audio} from "expo-av";
 
 export default function Home() {
   const [input, setInput] = useState('');
   const [output, setOutput] = useState('');
+
+  const textToSpeech = async (text: string) => {
+    const { data } = await supabase.functions.invoke('text-to-speech', {
+      body: JSON.stringify({ input: text }),
+    });
+
+    if (data) {
+      const { sound } = await Audio.Sound.createAsync({
+        uri: `data:audio/mp3;base64,${data.mp3Base64}`,
+      });
+      sound.playAsync();
+    }
+  };
 
   const translate = async (text: string) => {
     const { data } = await supabase.functions.invoke('translate', {
@@ -64,7 +78,12 @@ export default function Home() {
         <View className="gap-5 bg-gray-200 p-5">
           <Text className="min-h-32 text-xl">{output}</Text>
           <View className="flex-row justify-between">
-            <FontAwesome6 name="volume-high" size={18} color="dimgray" />
+            <FontAwesome6
+              onPress={() => textToSpeech(output)}
+              name="volume-high"
+              size={18}
+              color="dimgray"
+            />
             <FontAwesome5 name="copy" size={18} color="dimgray" />
           </View>
         </View>
