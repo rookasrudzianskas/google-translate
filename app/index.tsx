@@ -9,6 +9,8 @@ import {Audio} from "expo-av";
 export default function Home() {
   const [input, setInput] = useState('');
   const [output, setOutput] = useState('');
+  const [recording, setRecording] = useState<Audio.Recording>();
+  const [permissionResponse, requestPermission] = Audio.usePermissions();
 
   const textToSpeech = async (text: string) => {
     const { data } = await supabase.functions.invoke('text-to-speech', {
@@ -35,6 +37,53 @@ export default function Home() {
     const translation = await translate(input);
     setOutput(translation);
   };
+
+  async function startRecording() {
+    try {
+      if (permissionResponse?.status !== 'granted') {
+        console.log('Requesting permission..');
+        await requestPermission();
+      }
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: true,
+        playsInSilentModeIOS: true,
+      });
+
+      console.log('Starting recording..');
+      const { recording } = await Audio.Recording.createAsync(
+        Audio.RecordingOptionsPresets.HIGH_QUALITY
+      );
+      setRecording(recording);
+      console.log('Recording started');
+    } catch (err) {
+      console.error('Failed to start recording', err);
+    }
+  }
+
+  async function stopRecording() {
+    if (!recording) {
+      return;
+    }
+    console.log('Stopping recording..');
+    setRecording(undefined);
+    await recording.stopAndUnloadAsync();
+    await Audio.setAudioModeAsync({
+      allowsRecordingIOS: false,
+    });
+    const uri = recording.getURI();
+    console.log('Recording stopped and stored at', uri);
+
+    if (uri) {
+      const audioBase64 = await FileSystem.readAsStringAsync(uri, { encoding: 'base64' });
+      const { data, error } = await supabase.functions.invoke('speech-to-text', {
+        body: JSON.stringify({ audioBase64 }),
+      });
+      setInput(data.text);
+      const translation = await translate(data.text);
+      setOutput(translation);
+    }
+  }
+
 
   return (
     <>
@@ -68,7 +117,11 @@ export default function Home() {
           />
         </View>
         <View className="flex-row justify-between">
-          <FontAwesome6 name="microphone" size={18} color="dimgray" />
+          {recording ? (
+            <FontAwesome5 onPress={stopRecording} name="stop-circle" size={24} color="royalblue" />
+          ) : (
+            <FontAwesome6 onPress={startRecording} name="microphone" size={18} color="dimgray" />
+          )}
           <Text className="color-gray-500">{input.length} / 5000</Text>
         </View>
       </View>
